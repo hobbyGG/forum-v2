@@ -1,0 +1,22 @@
+server:
+  http:
+    addr: 0.0.0.0:8000
+    timeout: 1s
+  grpc:
+    addr: 0.0.0.0:9000
+    timeout: 1s
+biz:
+  auth:
+    pwd_secrete: "AWdAISdKhIAhf"
+    jwt_secrete: "toascjzsxkchkenaosivseciourete"
+  app:
+    machineID: 1
+    start_time: "2025-01-01 04:00:01"
+data:
+  database:
+    driver: mysql
+    source: root:123@tcp(127.0.0.1:13306)/user?parseTime=True&loc=Local
+  redis:
+    addr: 127.0.0.1:16379
+    read_timeout: 0.2s
+    write_timeout: 0.2s

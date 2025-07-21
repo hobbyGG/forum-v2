@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "user-service/api/auth/v1;v1";
+option java_multiple_files = true;
+option java_package = "dev.kratos.api.auth.v1";
+option java_outer_classname = "AuthProtoV1";
+
+import "validate/validate.proto";
+import "google/api/annotations.proto";
+
+service Auth {
+	rpc Login(LoginRequest) returns (LoginResponse){
+		option (google.api.http) = {
+			post: "/login"
+			body: "*"
+		};
+	}
+	rpc Signup(SignupRequest) returns (SignupResponse){}
+}
+
+message LoginRequest {
+	string userName = 1		[(validate.rules).string = {min_len:6, max_len:16}];
+	string password = 2		[(validate.rules).string = {min_len:8, max_len:16}];
+}
+message LoginResponse {
+	int32 code = 1;
+	string data = 2;
+}
+
+message SignupRequest {
+	string userName = 1		[(validate.rules).string = {min_len:6, max_len:16}];
+	string password = 2		[(validate.rules).string = {min_len:8, max_len:16}];
+	string rePassword = 3	[(validate.rules).string = {min_len:8, max_len:16}];
+	string tel = 4			[(validate.rules).string = {min_len:11, max_len:11}];
+}
+message SignupResponse {
+	int32 code = 1;
+}

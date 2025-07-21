@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package api.post.v1;
+
+option go_package = "post-service/api/post/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.post.v1";
+
+import "validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+service PostSrv {
+	rpc CreatePost (CreatePostRequest) returns (CreatePostReply);
+	rpc UpdatePost (UpdatePostRequest) returns (UpdatePostReply);
+	rpc DeletePost (DeletePostRequest) returns (DeletePostReply);
+	rpc GetPostPreview (GetPostPreviewRequest) returns (GetPostPreviewReply);
+	rpc GetPostDetail (GetPostDetailRequest) returns (GetPostDetailReply);
+	rpc ListPostPreview (ListPostPreviewRequest) returns (ListPostPreviewReply);
+}
+
+message CreatePostRequest {
+	string title = 1 [(validate.rules).string = {min_len:6}];
+	string content = 2 [(validate.rules).string = {min_len:1}];
+	repeated string tags = 3 ;
+}
+message CreatePostReply {
+	int32 code = 1;
+	Post post = 2;
+}
+
+message UpdatePostRequest {
+	optional string title = 1;
+	optional string content = 2;
+	optional int32 status = 3 [(validate.rules).int32 = {in: [0, 1, 2, 3 ,4]}];
+	optional int64 score = 4;
+	repeated string tags = 5;
+	int32 type = 6 [(validate.rules).int32 = {in: [0, 1]}];
+	int64 pid = 7 [(validate.rules).int64 = {gte: 1}];
+}
+message UpdatePostReply {
+	int32 code = 1;
+	Post post = 2;
+}
+
+message DeletePostRequest {
+	int64 pid = 1;
+}
+message DeletePostReply {
+	int32 code = 1;
+}
+
+message GetPostPreviewRequest {
+	int64 pid = 1 [(validate.rules).int64 = {gte: 1}];
+}
+message GetPostPreviewReply {
+	int32 code = 1;
+	PostPreview post = 2;
+}
+
+message GetPostDetailRequest {
+	int64 pid = 1 [(validate.rules).int64 = {gte: 1}];
+}
+message GetPostDetailReply {
+	int32 code = 1;
+	Post post = 2;
+}
+
+message ListPostPreviewRequest {
+	int64 page = 1 [(validate.rules).int64 = {gte: 0}];
+	int64 page_size = 2 [(validate.rules).int64 = {gte: 1}];
+}
+message ListPostPreviewReply {
+	int32 code = 1;
+	repeated PostPreview posts = 2;
+}
+
+message Post {
+	int64 id = 1;
+	int64 pid = 2;
+	optional int32 is_del = 3;
+	google.protobuf.Timestamp create_time = 4;
+	google.protobuf.Timestamp update_time = 5;
+
+	string title = 6;
+	string content = 7;
+	string author = 8;
+	int64 uid = 9;
+	int32 status = 10;
+	int64 score = 11;
+	repeated string tags = 12;
+	int64 view_count = 13;
+	int64 like_count = 14;
+}
+
+message PostPreview {
+	int64 id = 1;
+	int64 pid = 2;
+	google.protobuf.Timestamp create_time = 4;
+	google.protobuf.Timestamp update_time = 5;
+	string title = 6;
+	string content = 7;
+	string author = 8;
+	int32 status = 10;
+	int64 score = 11;
+	repeated string tags = 12;
+	int64 view_count = 13;
+	int64 like_count = 14;
+}

@@ -1,0 +1,22 @@
+server:
+  grpc:
+    addr: 0.0.0.0:9000
+    timeout: 1s
+  jwt_secret: toascjzsxkchkenaosivseciourete
+data:
+  mysql:
+    driver: mysql
+    source: root:123@tcp(127.0.0.1:13306)/user?charset=utf8mb4&parseTime=True&loc=Local
+  redis:
+    addr: 127.0.0.1:16379
+    read_timeout: 0.2s
+    write_timeout: 0.2s
+  pg:
+    source: postgres://postgres:123@localhost:5432/post?sslmode=disable
+  kafka:
+    addrs:
+     - "127.0.0.1:9092"
+biz:
+  app:
+    machineID: 1
+    start_time: "2025-01-01 04:00:01"
