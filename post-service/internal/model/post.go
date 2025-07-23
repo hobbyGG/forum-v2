@@ -42,6 +42,23 @@ func (p *Post) ScanArgs() []any {
 	}
 }
 
+func (p *Post) ToPreview() *PostPreview {
+	return &PostPreview{
+		Id:         p.Id,
+		Pid:        p.Pid,
+		CreateTime: p.CreateTime,
+		UpdateTime: p.UpdateTime,
+		Title:      p.Title,
+		Content:    p.Content,
+		Author:     p.Author,
+		Status:     p.Status,
+		Score:      p.Score,
+		Tags:       p.Tags,
+		ViewCount:  p.View,
+		LikeCount:  p.Like,
+	}
+}
+
 func (p *PostPreview) ScanArgs() []any {
 	return []any{
 		&p.Id, &p.Pid, &p.CreateTime, &p.UpdateTime,

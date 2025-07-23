@@ -28,6 +28,7 @@ type PostSrvClient interface {
 	GetPostPreview(ctx context.Context, in *GetPostPreviewRequest, opts ...grpc.CallOption) (*GetPostPreviewReply, error)
 	GetPostDetail(ctx context.Context, in *GetPostDetailRequest, opts ...grpc.CallOption) (*GetPostDetailReply, error)
 	ListPostPreview(ctx context.Context, in *ListPostPreviewRequest, opts ...grpc.CallOption) (*ListPostPreviewReply, error)
+	AddPostLike(ctx context.Context, in *AddPostLikeRequest, opts ...grpc.CallOption) (*AddPostLikeReply, error)
 }
 
 type postSrvClient struct {
@@ -92,6 +93,15 @@ func (c *postSrvClient) ListPostPreview(ctx context.Context, in *ListPostPreview
 	return out, nil
 }
 
+func (c *postSrvClient) AddPostLike(ctx context.Context, in *AddPostLikeRequest, opts ...grpc.CallOption) (*AddPostLikeReply, error) {
+	out := new(AddPostLikeReply)
+	err := c.cc.Invoke(ctx, "/api.post.v1.PostSrv/AddPostLike", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PostSrvServer is the server API for PostSrv service.
 // All implementations must embed UnimplementedPostSrvServer
 // for forward compatibility
@@ -102,6 +112,7 @@ type PostSrvServer interface {
 	GetPostPreview(context.Context, *GetPostPreviewRequest) (*GetPostPreviewReply, error)
 	GetPostDetail(context.Context, *GetPostDetailRequest) (*GetPostDetailReply, error)
 	ListPostPreview(context.Context, *ListPostPreviewRequest) (*ListPostPreviewReply, error)
+	AddPostLike(context.Context, *AddPostLikeRequest) (*AddPostLikeReply, error)
 	mustEmbedUnimplementedPostSrvServer()
 }
 
@@ -126,6 +137,9 @@ func (UnimplementedPostSrvServer) GetPostDetail(context.Context, *GetPostDetailR
 }
 func (UnimplementedPostSrvServer) ListPostPreview(context.Context, *ListPostPreviewRequest) (*ListPostPreviewReply, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListPostPreview not implemented")
+}
+func (UnimplementedPostSrvServer) AddPostLike(context.Context, *AddPostLikeRequest) (*AddPostLikeReply, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddPostLike not implemented")
 }
 func (UnimplementedPostSrvServer) mustEmbedUnimplementedPostSrvServer() {}
 
@@ -248,6 +262,24 @@ func _PostSrv_ListPostPreview_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PostSrv_AddPostLike_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddPostLikeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PostSrvServer).AddPostLike(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/api.post.v1.PostSrv/AddPostLike",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PostSrvServer).AddPostLike(ctx, req.(*AddPostLikeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PostSrv_ServiceDesc is the grpc.ServiceDesc for PostSrv service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -278,6 +310,10 @@ var PostSrv_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListPostPreview",
 			Handler:    _PostSrv_ListPostPreview_Handler,
+		},
+		{
+			MethodName: "AddPostLike",
+			Handler:    _PostSrv_AddPostLike_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

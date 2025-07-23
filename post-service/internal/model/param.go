@@ -18,6 +18,7 @@ type UpdatePostParam struct {
 	Status  *int32   `json:"status" db:"status"`
 	Score   *int64   `json:"score" db:"score"`
 	Tags    []string `json:"tags" db:"tags"`
+	Like    *int64   `json:"like" db:"like"`
 }
 
 func (p *CreatePostParam) ToArgs() []interface{} {

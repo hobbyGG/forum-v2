@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"post-service/internal/common"
 	"post-service/internal/conf"
 	"post-service/internal/model"
 	"time"
@@ -19,9 +21,14 @@ type PostRepo interface {
 	UpdatePost(ctx context.Context, post *model.UpdatePostParam) (*model.Post, error)
 	DeletePost(ctx context.Context, id int64) error
 	GetPostById(ctx context.Context, id int64) (*model.Post, error)
-	ListPostPreview(ctx context.Context, page, pageSize int64) ([]*model.PostPreview, error)
+	ListPostPreviewByTime(ctx context.Context, page, pageSize int64) ([]*model.PostPreview, error)
+	ListPostPreviewByHot(ctx context.Context, page, pageSize int64) ([]*model.PostPreview, error)
 
 	GetUserByUid(ctx context.Context, uid int64) (*model.User, error)
+
+	ExistedRsetMem(ctx context.Context, key string, mem any) (bool, error)
+	AddRsetMem(ctx context.Context, key string, mem any) error
+	DelRsetMem(ctx context.Context, key string, mem any) error
 }
 
 type PostUsecase struct {
@@ -53,11 +60,18 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+const (
+	StrTime = "time"
+	StrHot  = "hot"
+)
+
 var (
 	errTokenParase = errors.New("token is invalid")
 	errToekenType  = errors.New("token type is invalid")
 
 	errPostNotExisted = errors.New("post not existed")
+
+	errInvalideParam = errors.New("invalid Param")
 )
 
 func (uc *PostUsecase) CreatePost(ctx context.Context, param *model.CreatePostParam) (*model.Post, error) {
@@ -104,7 +118,15 @@ func (uc *PostUsecase) CreatePost(ctx context.Context, param *model.CreatePostPa
 	return post, nil
 }
 
+// UpdatePost 更新帖子，必须填写pid字段，否则会返回err
 func (uc *PostUsecase) UpdatePost(ctx context.Context, param *model.UpdatePostParam) (*model.Post, error) {
+	if param.Pid == 0 {
+		uc.log.Errorw(
+			"[biz]", "UpdatePost/Pid is required",
+			"err", errPostNotExisted,
+		)
+		return nil, errPostNotExisted
+	}
 	// 检查该post是否存在
 	postInDB, err := uc.repo.GetPostById(ctx, param.Pid)
 	if err != nil {
@@ -147,6 +169,9 @@ func (uc *PostUsecase) UpdatePost(ctx context.Context, param *model.UpdatePostPa
 	}
 	if param.Tags == nil {
 		param.Tags = postInDB.Tags
+	}
+	if param.Like == nil {
+		param.Like = &postInDB.Like
 	}
 
 	uc.log.WithContext(ctx).Infof("Updating post with PID: %d", param.Pid)
@@ -205,15 +230,167 @@ func (uc *PostUsecase) GetPostById(ctx context.Context, id int64) (*model.Post, 
 	return post, nil
 }
 
-func (uc *PostUsecase) ListPostPreview(ctx context.Context, page, pageSize int64) ([]*model.PostPreview, error) {
-	uc.log.WithContext(ctx).Infof("Listing posts with page: %d, pageSize: %d", page, pageSize)
-	posts, err := uc.repo.ListPostPreview(ctx, page, pageSize)
+func (uc *PostUsecase) ListPostPreview(ctx context.Context, page, pageSize int64, searchType *string) ([]*model.PostPreview, error) {
+	if searchType == nil {
+		// 默认按时间查询
+		searchType = new(string)
+		*searchType = StrTime
+	}
+	switch *searchType {
+	case StrTime:
+		uc.log.WithContext(ctx).Infof("Listing posts with page order by time: %d, pageSize: %d ", page, pageSize)
+		posts, err := uc.repo.ListPostPreviewByTime(ctx, page, pageSize)
+		if err != nil {
+			uc.log.Errorw(
+				"[biz]", "ListPostPreview/ListPostPreview failed",
+				"err", err,
+			)
+			return nil, err
+		}
+		return posts, nil
+	case StrHot:
+		uc.log.WithContext(ctx).Infof("Listing posts with page order by hot: %d, pageSize: %d ", page, pageSize)
+		posts, err := uc.repo.ListPostPreviewByHot(ctx, page, pageSize)
+		if err != nil {
+			uc.log.Errorw(
+				"[biz]", "ListPostPreview/ListPostByHot failed",
+				"err", err,
+			)
+			return nil, err
+		}
+		return posts, nil
+	}
+	uc.log.WithContext(ctx).Errorw(
+		"[biz]", "ListPostPreview/Unknown search type",
+		"searchType", *searchType,
+	)
+	return nil, errors.New("unkown error")
+}
+
+func (uc *PostUsecase) AddPostLike(ctx context.Context, pid int64, like int32) (*model.Post, error) {
+	// 检查帖子是否存在
+	postInDB, err := uc.repo.GetPostById(ctx, pid)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			uc.log.Errorw(
+				"[biz]", "UpdatePost/GetPostById failed",
+				"err", errPostNotExisted,
+				"pid", pid,
+			)
+			return nil, errPostNotExisted
+		}
+		uc.log.Errorw(
+			"[biz]", "UpdatePost/GetPostById failed",
+			"err", err,
+			"pid", pid,
+		)
+		return nil, err
+	}
+	if postInDB == nil {
+		uc.log.Errorw(
+			"[biz]", "UpdatePost/PostInDB is nil",
+			"err", errPostNotExisted,
+			"pid", pid,
+		)
+		return nil, errPostNotExisted
+	}
+
+	// 存在则更新点赞情况
+	// like = 1时
+	// 如果已经点赞过，再次点赞则不做任何操作
+	// 如果未点赞过，记录该点赞并更新分数到redis与pg中
+	// like = 0时
+	// 如果已经点赞过，取消点赞并更新分数到redis与pg中
+	// 如果未点赞过，则不做任何操作
+	uid, err := GetUidFromCtx(ctx)
 	if err != nil {
 		uc.log.Errorw(
-			"[biz]", "ListPostPreview/ListPostPreview failed",
+			"[biz]", "AddPostLike/GetUidFromCtx failed",
 			"err", err,
 		)
 		return nil, err
 	}
-	return posts, nil
+
+	key := fmt.Sprintf(common.RKeyPostLike, pid)
+	// 取消点赞操作，检查是否点过赞
+	ok, err := uc.repo.ExistedRsetMem(ctx, key, uid)
+	if err != nil {
+		uc.log.Errorw(
+			"[biz]", "AddPostLike/ExistedRsetMem failed",
+			"err", err,
+		)
+		return nil, err
+	}
+
+	var newlike int64
+	if like == 1 {
+		// 点赞操作，检查是否点过赞
+		if ok {
+			return postInDB, nil // 已经点过赞，直接返回
+		}
+		// 未点过赞，更新redis
+		if err := uc.repo.AddRsetMem(ctx, key, uid); err != nil {
+			uc.log.Errorw(
+				"[biz]", "AddPostLike/AddRsetMem failed",
+				"err", err,
+				"pid", pid,
+			)
+			return nil, err
+		}
+		newlike = postInDB.Like + 1
+	}
+	if like == 0 {
+		if !ok {
+			return postInDB, nil // 未点过赞，直接返回
+		}
+		// 已经点过赞，更新redis
+		if err := uc.repo.DelRsetMem(ctx, key, uid); err != nil {
+			uc.log.Errorw(
+				"[biz]", "AddPostLike/DelRsetMem failed",
+				"err", err,
+				"pid", pid,
+			)
+			return nil, err
+		}
+		newlike = postInDB.Like - 1
+		if newlike < 0 {
+			newlike = 0 // 确保点赞数不为负数
+		}
+	}
+	if like != 0 && like != 1 {
+		uc.log.Errorw(
+			"[biz]", "AddPostLike/Invalid like value",
+			"err", errInvalideParam,
+			"like", like,
+		)
+		return nil, errInvalideParam
+	}
+
+	// 注意这里的操作可能存在redis与数据库不同步的问题，可以使用消息队列解决，兜底方案为重新同步
+	replyPost, err := uc.UpdatePost(ctx, &model.UpdatePostParam{
+		Pid:  pid,
+		Like: &newlike,
+	})
+	if err != nil {
+		uc.log.Errorw(
+			"[biz]", "AddPostLike/UpdatePost failed",
+			"err", err,
+			"pid", pid,
+		)
+		return nil, err
+	}
+	return replyPost, nil
+
+}
+
+func GetUidFromCtx(ctx context.Context) (int64, error) {
+	claimsToken, ok := jwtkratos.FromContext(ctx)
+	if !ok {
+		return -1, errTokenParase
+	}
+	claims, ok := claimsToken.(*Claims)
+	if !ok {
+		return -1, errToekenType
+	}
+	return claims.UID, nil
 }

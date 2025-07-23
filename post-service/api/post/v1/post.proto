@@ -16,6 +16,8 @@ service PostSrv {
 	rpc GetPostPreview (GetPostPreviewRequest) returns (GetPostPreviewReply);
 	rpc GetPostDetail (GetPostDetailRequest) returns (GetPostDetailReply);
 	rpc ListPostPreview (ListPostPreviewRequest) returns (ListPostPreviewReply);
+
+	rpc AddPostLike (AddPostLikeRequest) returns (AddPostLikeReply);
 }
 
 message CreatePostRequest {
@@ -68,10 +70,20 @@ message GetPostDetailReply {
 message ListPostPreviewRequest {
 	int64 page = 1 [(validate.rules).int64 = {gte: 0}];
 	int64 page_size = 2 [(validate.rules).int64 = {gte: 1}];
+	optional string type = 3;
 }
 message ListPostPreviewReply {
 	int32 code = 1;
 	repeated PostPreview posts = 2;
+}
+
+message AddPostLikeRequest {
+	int64 pid = 1 [(validate.rules).int64 = {gte: 1}];
+	int32 like = 2 [(validate.rules).int32 = {in: [0, 1]}];
+}
+message AddPostLikeReply {
+	int32 code = 1;
+	Post post = 2;
 }
 
 message Post {

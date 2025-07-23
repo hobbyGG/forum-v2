@@ -167,8 +167,9 @@ func (s *PostSrvService) GetPostDetail(ctx context.Context, req *pb.GetPostDetai
 func (s *PostSrvService) ListPostPreview(ctx context.Context, req *pb.ListPostPreviewRequest) (*pb.ListPostPreviewReply, error) {
 	page := req.Page
 	size := req.PageSize
+	searchType := req.Type
 
-	posts, err := s.uc.ListPostPreview(ctx, page, size)
+	posts, err := s.uc.ListPostPreview(ctx, page, size, searchType)
 	if err != nil {
 		s.log.Errorw(
 			"[service]", "ListPost",
@@ -198,5 +199,36 @@ func (s *PostSrvService) ListPostPreview(ctx context.Context, req *pb.ListPostPr
 	return &pb.ListPostPreviewReply{
 		Code:  200,
 		Posts: respPosts,
+	}, nil
+}
+
+func (s *PostSrvService) AddPostLike(ctx context.Context, req *pb.AddPostLikeRequest) (*pb.AddPostLikeReply, error) {
+	post, err := s.uc.AddPostLike(ctx, req.Pid, req.Like)
+	if err != nil {
+		s.log.Errorw(
+			"[service]", "AddPostLike",
+			"err", err,
+		)
+		return nil, err
+	}
+	respPost := pb.Post{
+		Id:         post.Id,
+		Pid:        post.Pid,
+		IsDel:      post.IsDel,
+		CreateTime: timestamppb.New(post.CreateTime),
+		UpdateTime: timestamppb.New(post.UpdateTime),
+		Title:      post.Title,
+		Content:    post.Content,
+		Author:     post.Author,
+		Uid:        post.Uid,
+		Status:     post.Status,
+		Score:      post.Score,
+		Tags:       post.Tags,
+		ViewCount:  post.View,
+		LikeCount:  post.Like,
+	}
+	return &pb.AddPostLikeReply{
+		Code: 200,
+		Post: &respPost,
 	}, nil
 }

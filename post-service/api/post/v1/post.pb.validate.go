@@ -1316,15 +1316,19 @@ func (m *ListPostPreviewRequest) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	if m.GetPageSize() < 0 {
+	if m.GetPageSize() < 1 {
 		err := ListPostPreviewRequestValidationError{
 			field:  "PageSize",
-			reason: "value must be greater than or equal to 0",
+			reason: "value must be greater than or equal to 1",
 		}
 		if !all {
 			return err
 		}
 		errors = append(errors, err)
+	}
+
+	if m.Type != nil {
+		// no validation rules for Type
 	}
 
 	if len(errors) > 0 {
@@ -1544,6 +1548,266 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = ListPostPreviewReplyValidationError{}
+
+// Validate checks the field values on AddPostLikeRequest with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *AddPostLikeRequest) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on AddPostLikeRequest with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// AddPostLikeRequestMultiError, or nil if none found.
+func (m *AddPostLikeRequest) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *AddPostLikeRequest) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if m.GetPid() < 1 {
+		err := AddPostLikeRequestValidationError{
+			field:  "Pid",
+			reason: "value must be greater than or equal to 1",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if _, ok := _AddPostLikeRequest_Like_InLookup[m.GetLike()]; !ok {
+		err := AddPostLikeRequestValidationError{
+			field:  "Like",
+			reason: "value must be in list [0 1]",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		return AddPostLikeRequestMultiError(errors)
+	}
+
+	return nil
+}
+
+// AddPostLikeRequestMultiError is an error wrapping multiple validation errors
+// returned by AddPostLikeRequest.ValidateAll() if the designated constraints
+// aren't met.
+type AddPostLikeRequestMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m AddPostLikeRequestMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m AddPostLikeRequestMultiError) AllErrors() []error { return m }
+
+// AddPostLikeRequestValidationError is the validation error returned by
+// AddPostLikeRequest.Validate if the designated constraints aren't met.
+type AddPostLikeRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e AddPostLikeRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e AddPostLikeRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e AddPostLikeRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e AddPostLikeRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e AddPostLikeRequestValidationError) ErrorName() string {
+	return "AddPostLikeRequestValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e AddPostLikeRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sAddPostLikeRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = AddPostLikeRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = AddPostLikeRequestValidationError{}
+
+var _AddPostLikeRequest_Like_InLookup = map[int32]struct{}{
+	0: {},
+	1: {},
+}
+
+// Validate checks the field values on AddPostLikeReply with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *AddPostLikeReply) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on AddPostLikeReply with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// AddPostLikeReplyMultiError, or nil if none found.
+func (m *AddPostLikeReply) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *AddPostLikeReply) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Code
+
+	if all {
+		switch v := interface{}(m.GetPost()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, AddPostLikeReplyValidationError{
+					field:  "Post",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, AddPostLikeReplyValidationError{
+					field:  "Post",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetPost()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return AddPostLikeReplyValidationError{
+				field:  "Post",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		return AddPostLikeReplyMultiError(errors)
+	}
+
+	return nil
+}
+
+// AddPostLikeReplyMultiError is an error wrapping multiple validation errors
+// returned by AddPostLikeReply.ValidateAll() if the designated constraints
+// aren't met.
+type AddPostLikeReplyMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m AddPostLikeReplyMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m AddPostLikeReplyMultiError) AllErrors() []error { return m }
+
+// AddPostLikeReplyValidationError is the validation error returned by
+// AddPostLikeReply.Validate if the designated constraints aren't met.
+type AddPostLikeReplyValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e AddPostLikeReplyValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e AddPostLikeReplyValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e AddPostLikeReplyValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e AddPostLikeReplyValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e AddPostLikeReplyValidationError) ErrorName() string { return "AddPostLikeReplyValidationError" }
+
+// Error satisfies the builtin error interface
+func (e AddPostLikeReplyValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sAddPostLikeReply.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = AddPostLikeReplyValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = AddPostLikeReplyValidationError{}
 
 // Validate checks the field values on Post with the rules defined in the proto
 // definition for this message. If any rules are violated, the first error

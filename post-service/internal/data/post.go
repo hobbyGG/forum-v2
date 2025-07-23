@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kratos/kratos/v2/log"
+	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 	"github.com/segmentio/kafka-go"
 	"github.com/sony/gobreaker"
@@ -28,8 +29,9 @@ const (
 )
 
 var (
-	sfg     = singleflight.Group{}
-	breaker = gobreaker.NewCircuitBreaker(gobreaker.Settings{Name: "DataRepoBreaker"})
+	sfg          = singleflight.Group{}
+	redisBreaker = gobreaker.NewCircuitBreaker(gobreaker.Settings{Name: "RedisBreaker"})
+	pgBreaker    = gobreaker.NewCircuitBreaker(gobreaker.Settings{Name: "PGBreaker"})
 )
 
 type PostRepo struct {
@@ -66,7 +68,7 @@ func (repo *PostRepo) CreatePost(ctx context.Context, post *model.CreatePostPara
 	returning id, pid, is_del, create_time, update_time, title, content, author, uid, status, score, tags, view, "like";`
 	replyPost := new(model.Post)
 
-	res, err := breaker.Execute(func() (interface{}, error) {
+	res, err := pgBreaker.Execute(func() (interface{}, error) {
 		if err := repo.data.PgxCli.QueryRow(ctx, sqlStr, post.ToArgs()...).
 			Scan(replyPost.ScanArgs()...); err != nil {
 			repo.log.Errorw(
@@ -76,15 +78,22 @@ func (repo *PostRepo) CreatePost(ctx context.Context, post *model.CreatePostPara
 			)
 			return nil, err
 		}
-
-		if err := delCacheAfterWrite(ctx, repo, post.Pid); err != nil {
-			repo.log.Errorw(
-				"[repo]", "CreatePost/DelPostFC failed",
-				"err", err,
-				"pid", post.Pid)
-		}
 		return replyPost, nil
 	})
+
+	// 将新创建的帖子加入排行榜
+	if err := repo.AddHotRank(ctx, replyPost.Pid, replyPost.Score); err != nil {
+		repo.log.Errorw(
+			"[repo]", "CreatePost/AddHotRank failed",
+			"pid", replyPost.Pid,
+		)
+		return nil, err
+	}
+	if err := delCacheAfterWrite(ctx, repo, post.Pid); err != nil {
+		repo.log.Errorw(
+			"[repo]", "CreatePost/DelPostFC failed",
+			"pid", post.Pid)
+	}
 	return res.(*model.Post), err
 }
 
@@ -109,7 +118,7 @@ func (repo *PostRepo) UpdatePost(ctx context.Context, post *model.UpdatePostPara
 	where pid = $7
 	returning id, pid, is_del, create_time, update_time, title, content, author, uid, status, score, tags, view, "like";`
 
-	res, err := breaker.Execute(func() (interface{}, error) {
+	res, err := pgBreaker.Execute(func() (interface{}, error) {
 		replyPost := new(model.Post)
 		agrs := append(post.ToArgs(), post.Pid)
 		if err := repo.data.PgxCli.QueryRow(ctx, sqlStr, agrs...).Scan(replyPost.ScanArgs()...); err != nil {
@@ -125,15 +134,24 @@ func (repo *PostRepo) UpdatePost(ctx context.Context, post *model.UpdatePostPara
 		return nil, err
 	}
 
+	replyPost := res.(*model.Post)
+	// 更新成功后将帖子加入排行榜
+	if err := repo.AddHotRank(ctx, replyPost.Pid, replyPost.Score); err != nil {
+		repo.log.Errorw(
+			"[repo]", "UpdatePost/AddHotRank failed",
+			"pid", replyPost.Pid,
+		)
+		return nil, err
+	}
 	// 写删除
-	if err := delCacheAfterWrite(ctx, repo, post.Pid); err != nil {
+	if err := delCacheAfterWrite(ctx, repo, replyPost.Pid); err != nil {
 		repo.log.Errorw(
 			"[repo]", "UpdatePost/DelPostFC failed",
 			"err", err,
-			"pid", post.Pid,
+			"pid", replyPost.Pid,
 		)
 	}
-	return res.(*model.Post), nil
+	return replyPost, nil
 }
 
 func (repo *PostRepo) DeletePost(ctx context.Context, id int64) error {
@@ -143,7 +161,7 @@ func (repo *PostRepo) DeletePost(ctx context.Context, id int64) error {
 	set is_del = null
 	where pid = $1`
 
-	_, err := breaker.Execute(func() (interface{}, error) {
+	_, err := pgBreaker.Execute(func() (interface{}, error) {
 		if _, err := repo.data.PgxCli.Exec(ctx, sqlStr, id); err != nil {
 			repo.log.Errorw(
 				"[repo]", "DeletePost/Exec failed",
@@ -158,10 +176,15 @@ func (repo *PostRepo) DeletePost(ctx context.Context, id int64) error {
 		return err
 	}
 
+	if err := repo.DelHotRankMem(ctx, id); err != nil {
+		repo.log.Errorw(
+			"[repo]", "DeletePost/DelHotRank failed",
+			"pid", id,
+		)
+	}
 	if err := delCacheAfterWrite(ctx, repo, id); err != nil {
 		repo.log.Errorw(
 			"[repo]", "DeletePost/DelPostFC failed",
-			"err", err,
 			"pid", id,
 		)
 	}
@@ -234,15 +257,32 @@ func (repo *PostRepo) GetPostById(ctx context.Context, pid int64) (*model.Post, 
 	return post.(*model.Post), nil
 }
 
-func (repo *PostRepo) ListPostPreview(ctx context.Context, page, pageSize int64) ([]*model.PostPreview, error) {
-	// 可选：增加列表缓存，已经定义的参数(key)
+func (repo *PostRepo) ListPostPreviewByTime(ctx context.Context, page, pageSize int64) ([]*model.PostPreview, error) {
 	sqlStr := `
 	select id, pid, create_time, update_time, title, content, author, status, score, tags, view, "like"
 	from post_info 
 	where is_del = 0
+	order by update_time desc
 	limit $1 offset $2`
+	return repo.ListPostPreview(ctx, page, pageSize, sqlStr)
+}
 
-	rows, err := repo.data.PgxCli.Query(ctx, sqlStr, pageSize, page*pageSize)
+func (repo *PostRepo) ListPostPreviewByHotFallback(ctx context.Context, page, pageSize int64) ([]*model.PostPreview, error) {
+	sqlStr := `
+	select id, pid, create_time, update_time, title, content, author, status, score, tags, view, "like"
+	from post_info 
+	where is_del = 0
+	order by score desc, view desc
+	limit $1 offset $2`
+	return repo.ListPostPreview(ctx, page, pageSize, sqlStr)
+}
+
+func (repo *PostRepo) ListPostPreview(ctx context.Context, page, pageSize int64, sqlStr string) ([]*model.PostPreview, error) {
+	// 可选：增加列表缓存，已经定义的参数(key)
+	res, err := pgBreaker.Execute(func() (interface{}, error) {
+		rows, err := repo.data.PgxCli.Query(ctx, sqlStr, pageSize, page*pageSize)
+		return rows, err
+	})
 	if err != nil {
 		repo.log.Errorw(
 			"[repo]", "ListPosts/Query failed",
@@ -250,6 +290,7 @@ func (repo *PostRepo) ListPostPreview(ctx context.Context, page, pageSize int64)
 		)
 		return nil, err
 	}
+	rows := res.(pgx.Rows)
 	defer rows.Close()
 
 	posts := make([]*model.PostPreview, 0, pageSize)
@@ -392,11 +433,43 @@ func (repo *PostRepo) SetPostFCByPid(ctx context.Context, post *model.Post, expi
 }
 
 func (repo *PostRepo) DelPostFCByPid(ctx context.Context, pid int64) error {
-	_, err := breaker.Execute(func() (interface{}, error) {
+	_, err := redisBreaker.Execute(func() (interface{}, error) {
 		key := GetPostInfoKey(pid)
 		return nil, repo.DelPostFCByKey(ctx, key)
 	})
 	return err
+}
+
+func (repo *PostRepo) AddHotRank(ctx context.Context, pid, score int64) error {
+	_, err := redisBreaker.Execute(func() (interface{}, error) {
+		// 将帖子加入热度排行榜
+		if err := repo.data.Rcli.ZAdd(ctx, common.RKeyPostHotRank, redis.Z{
+			Score:  float64(score),
+			Member: pid,
+		}).Err(); err != nil {
+			repo.log.Errorw(
+				"[repo]", "AddHotRank/ZAdd failed",
+				"err", err,
+				"pid", pid,
+			)
+			return nil, err
+		}
+		return nil, nil
+	})
+	return err
+}
+
+func (repo *PostRepo) DelHotRankMem(ctx context.Context, pid int64) error {
+	// 从热度排行榜中删除帖子
+	if err := repo.data.Rcli.ZRem(ctx, common.RKeyPostHotRank, pid).Err(); err != nil {
+		repo.log.Errorw(
+			"[repo]", "DelHotRank/ZRem failed",
+			"err", err,
+			"pid", pid,
+		)
+		return err
+	}
+	return nil
 }
 
 func (repo *PostRepo) DelPostFCByKey(ctx context.Context, key string) error {
@@ -409,6 +482,62 @@ func (repo *PostRepo) DelPostFCByKey(ctx context.Context, key string) error {
 		return err
 	}
 	return nil
+}
+
+func (repo *PostRepo) ListPostPreviewByHot(ctx context.Context, page, pageSize int64) ([]*model.PostPreview, error) {
+	// TODO:
+	// 1.从数据库中获取热度最高的post信息
+	// 2.将获取到的信息封装成model.PostPreview对象
+	start := page * pageSize
+	end := (page+1)*pageSize - 1
+	members, err := repo.data.Rcli.ZRangeWithScores(ctx, common.RKeyPostHotRank, start, end).Result()
+	if err != nil {
+		repo.log.Errorw(
+			"[repo]", "ListPostPreviewByHot/ZRangeWithScores failed",
+			"err", err,
+			"page", page,
+			"pageSize", pageSize,
+		)
+		return nil, err
+	}
+
+	PostPreviews := make([]*model.PostPreview, 0, len(members))
+	for _, member := range members {
+		// 从数据库获取详细数据
+		pid, ok := member.Member.(int64)
+		if !ok {
+			repo.log.Errorw(
+				"[repo]", "ListPostPreviewByHot/Member type assertion failed",
+				"err", err,
+				"member", member.Member,
+			)
+			return nil, err
+		}
+		post, err := repo.GetPostById(ctx, pid)
+		if err != nil {
+			repo.log.Errorw(
+				"[repo]", "ListPostPreviewByHot/GetPostById failed",
+				"err", err,
+				"pid", pid,
+			)
+			return nil, err
+		}
+		PostPreviews = append(PostPreviews, post.ToPreview())
+	}
+
+	return PostPreviews, nil
+}
+
+func (repo *PostRepo) ExistedRsetMem(ctx context.Context, key string, mem any) (bool, error) {
+	return repo.data.Rcli.SIsMember(ctx, key, mem).Result()
+}
+
+func (repo *PostRepo) AddRsetMem(ctx context.Context, key string, mem any) error {
+	return repo.data.Rcli.SAdd(ctx, key, mem).Err()
+}
+
+func (repo *PostRepo) DelRsetMem(ctx context.Context, key string, mem any) error {
+	return repo.data.Rcli.SRem(ctx, key, mem).Err()
 }
 
 func GetPostInfoKey(pid int64) string {
