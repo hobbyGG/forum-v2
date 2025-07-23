@@ -14,6 +14,7 @@ import (
 	"github.com/go-kratos/kratos/v2/log"
 	jwtkratos "github.com/go-kratos/kratos/v2/middleware/auth/jwt"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 )
 
 type PostRepo interface {
@@ -29,12 +30,21 @@ type PostRepo interface {
 	ExistedRsetMem(ctx context.Context, key string, mem any) (bool, error)
 	AddRsetMem(ctx context.Context, key string, mem any) error
 	DelRsetMem(ctx context.Context, key string, mem any) error
+
+	RedisClient() *redis.Client
+}
+
+type redisLocker struct {
+	Client *redis.Client
+	ttl    time.Duration
+	id     int64
 }
 
 type PostUsecase struct {
-	repo PostRepo
-	node *snowflake.Node
-	log  log.Helper
+	repo    PostRepo
+	rlocker *redisLocker
+	node    *snowflake.Node
+	log     log.Helper
 }
 
 func NewPostUsecase(c *conf.Biz, repo PostRepo, logger log.Logger) *PostUsecase {
@@ -48,10 +58,13 @@ func NewPostUsecase(c *conf.Biz, repo PostRepo, logger log.Logger) *PostUsecase 
 		panic(err)
 	}
 
+	rlocker := &redisLocker{Client: repo.RedisClient(), ttl: 5 * time.Second, id: c.App.Machine_ID}
+
 	return &PostUsecase{
-		repo: repo,
-		node: node,
-		log:  *log.NewHelper(logger),
+		repo:    repo,
+		node:    node,
+		log:     *log.NewHelper(logger),
+		rlocker: rlocker,
 	}
 }
 
@@ -128,6 +141,39 @@ func (uc *PostUsecase) UpdatePost(ctx context.Context, param *model.UpdatePostPa
 		return nil, errPostNotExisted
 	}
 	// 检查该post是否存在
+	// 上锁
+	keyLock := fmt.Sprintf(common.RKeyPostLock, param.Pid)
+	maxTry := 11
+	for i := 0; i < maxTry; i++ {
+		if i == maxTry-1 {
+			// 获取锁失败
+			uc.log.Errorw(
+				"[biz]", "UpdatePost/Lock failed",
+				"err", fmt.Errorf("failed to acquire lock after %d attempts", maxTry),
+				"pid", param.Pid,
+			)
+			return nil, fmt.Errorf("failed to acquire lock after %d attempts", maxTry)
+		}
+		waitTime := 1
+		ok, err := uc.rlocker.Lock(ctx, keyLock)
+		if err != nil {
+			// 上锁时出错
+			uc.log.Errorw(
+				"[biz]", "UpdatePost/Lock failed",
+				"err", err,
+			)
+			return nil, err
+		}
+		if !ok {
+			// 锁正在使用，等待指数秒后重试
+			time.Sleep(time.Duration(waitTime) * time.Millisecond)
+			waitTime *= 2
+			continue
+		}
+		break
+	}
+	// 成功获取锁
+
 	postInDB, err := uc.repo.GetPostById(ctx, param.Pid)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -176,6 +222,13 @@ func (uc *PostUsecase) UpdatePost(ctx context.Context, param *model.UpdatePostPa
 
 	uc.log.WithContext(ctx).Infof("Updating post with PID: %d", param.Pid)
 	post, err := uc.repo.UpdatePost(ctx, param)
+	if err := uc.rlocker.Unlock(ctx, keyLock); err != nil {
+		uc.log.Errorw(
+			"[biz]", "UpdatePost/Unlock failed",
+			"err", err,
+		)
+		return nil, err
+	}
 	if err != nil {
 		uc.log.Errorw(
 			"[biz]", "UpdatePost/UpdatePost failed",
@@ -393,4 +446,15 @@ func GetUidFromCtx(ctx context.Context) (int64, error) {
 		return -1, errToekenType
 	}
 	return claims.UID, nil
+}
+
+// 查后改锁
+func (l *redisLocker) Lock(ctx context.Context, key string) (bool, error) {
+	ok, err := l.Client.SetNX(ctx, key, l.id, l.ttl).Result()
+	return ok, err
+}
+
+func (l *redisLocker) Unlock(ctx context.Context, key string) error {
+	_, err := l.Client.Del(ctx, key).Result()
+	return err
 }

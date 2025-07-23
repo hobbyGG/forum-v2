@@ -46,6 +46,10 @@ func NewPostRepo(data *Data, logger log.Logger) biz.PostRepo {
 	}
 }
 
+func (repo *PostRepo) RedisClient() *redis.Client {
+	return repo.data.Rcli
+}
+
 func NewPostRepoForJob(data *Data, logger log.Logger) *PostRepo {
 	return &PostRepo{
 		data: data,

@@ -7,4 +7,6 @@ const (
 	RKeyPostLike   = "post:post_like:%v" //记录每个post的点赞情况，存储pid与多个uid
 
 	RKeyPostHotRank = "post:post_rank:hot"
+
+	RKeyPostLock = "post:post_lock:%v" // post服务，post锁，key为post的唯一标识
 )
