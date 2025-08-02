@@ -15,6 +15,7 @@ import (
 	jwtkratos "github.com/go-kratos/kratos/v2/middleware/auth/jwt"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/redis/go-redis/v9"
+	"github.com/sony/gobreaker"
 )
 
 type PostRepo interface {
@@ -24,6 +25,7 @@ type PostRepo interface {
 	GetPostById(ctx context.Context, id int64) (*model.Post, error)
 	ListPostPreviewByTime(ctx context.Context, page, pageSize int64) ([]*model.PostPreview, error)
 	ListPostPreviewByHot(ctx context.Context, page, pageSize int64) ([]*model.PostPreview, error)
+	ListPostPreviewByHotFallback(ctx context.Context, page, pageSize int64) ([]*model.PostPreview, error)
 
 	GetUserByUid(ctx context.Context, uid int64) (*model.User, error)
 
@@ -309,6 +311,17 @@ func (uc *PostUsecase) ListPostPreview(ctx context.Context, page, pageSize int64
 				"[biz]", "ListPostPreview/ListPostByHot failed",
 				"err", err,
 			)
+			if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) {
+				fallPosts, err := uc.repo.ListPostPreviewByHotFallback(ctx, page, pageSize)
+				if err != nil {
+					uc.log.Errorw(
+						"biz", "ListPostPreview/ListPostPreviewByHotFallback failed",
+						"err", err,
+					)
+					return nil, err
+				}
+				return fallPosts, nil
+			}
 			return nil, err
 		}
 		return posts, nil
