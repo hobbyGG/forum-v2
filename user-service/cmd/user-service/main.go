@@ -6,7 +6,6 @@ import (
 
 	"user-service/internal/conf"
 
-	"github.com/go-kratos/kratos/contrib/registry/consul/v2"
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/config/file"
@@ -14,7 +13,6 @@ import (
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/go-kratos/kratos/v2/transport/http"
-	"github.com/hashicorp/consul/api"
 
 	_ "go.uber.org/automaxprocs"
 )
@@ -36,11 +34,11 @@ func init() {
 }
 
 func newApp(logger log.Logger, gs *grpc.Server, hs *http.Server) *kratos.App {
-	client, err := api.NewClient(api.DefaultConfig())
-	if err != nil {
-		panic(err)
-	}
-	r := consul.New(client, consul.WithHealthCheck(true))
+	// client, err := api.NewClient(api.DefaultConfig())
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// r := consul.New(client, consul.WithHealthCheck(true))
 	return kratos.New(
 		kratos.ID(id),
 		kratos.Name(Name),
@@ -51,7 +49,7 @@ func newApp(logger log.Logger, gs *grpc.Server, hs *http.Server) *kratos.App {
 			gs,
 			hs,
 		),
-		kratos.Registrar(r), // 注册到 Consul
+		// kratos.Registrar(r), // 注册到 Consul
 	)
 }
 

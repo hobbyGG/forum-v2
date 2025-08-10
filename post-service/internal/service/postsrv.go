@@ -29,7 +29,9 @@ var (
 
 func (s *PostSrvService) CreatePost(ctx context.Context, req *pb.CreatePostRequest) (*pb.CreatePostReply, error) {
 	// 请求处理
-
+	if req.Tags == nil {
+		req.Tags = []string{"default"}
+	}
 	param := model.CreatePostParam{
 		Title:   req.Title,
 		Content: req.Content,

@@ -8,14 +8,12 @@ import (
 	"post-service/internal/conf"
 	"post-service/internal/job"
 
-	"github.com/go-kratos/kratos/contrib/registry/consul/v2"
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/config"
 	"github.com/go-kratos/kratos/v2/config/file"
 	"github.com/go-kratos/kratos/v2/log"
 	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	"github.com/go-kratos/kratos/v2/transport/grpc"
-	"github.com/hashicorp/consul/api"
 
 	_ "go.uber.org/automaxprocs"
 )
@@ -40,13 +38,15 @@ func newApp(logger log.Logger, gs *grpc.Server, job *job.JobRepo) *kratos.App {
 	if job == nil {
 		panic("job repo is nil")
 	}
-	go job.PostInfoJob(context.Background())
-
-	client, err := api.NewClient(api.DefaultConfig())
-	if err != nil {
-		panic(err)
+	{
+		go job.PostInfoJob(context.Background())
 	}
-	r := consul.New(client, consul.WithHealthCheck(true))
+
+	// client, err := api.NewClient(api.DefaultConfig())
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// r := consul.New(client, consul.WithHealthCheck(true))
 	return kratos.New(
 		kratos.ID(id),
 		kratos.Name(Name),
@@ -56,7 +56,7 @@ func newApp(logger log.Logger, gs *grpc.Server, job *job.JobRepo) *kratos.App {
 		kratos.Server(
 			gs,
 		),
-		kratos.Registrar(r), // 注册到 Consul
+		// kratos.Registrar(r), // 注册到 Consul
 	)
 }
 

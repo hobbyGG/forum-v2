@@ -433,6 +433,7 @@ func (uc *PostUsecase) AddPostLike(ctx context.Context, pid int64, like int32) (
 	}
 
 	// 注意这里的操作可能存在redis与数据库不同步的问题，可以使用消息队列解决，兜底方案为重新同步
+	// 处理应该放在update中
 	replyPost, err := uc.UpdatePost(ctx, &model.UpdatePostParam{
 		Pid:  pid,
 		Like: &newlike,
@@ -443,10 +444,8 @@ func (uc *PostUsecase) AddPostLike(ctx context.Context, pid int64, like int32) (
 			"err", err,
 			"pid", pid,
 		)
-		return nil, err
 	}
 	return replyPost, nil
-
 }
 
 func GetUidFromCtx(ctx context.Context) (int64, error) {
