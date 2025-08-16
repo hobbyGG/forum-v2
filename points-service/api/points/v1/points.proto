@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package ..api.points.v1;
+
+option go_package = "points-service/./api/points/v1;v1";
+option java_multiple_files = true;
+option java_package = "..api.points.v1";
+
+service Points {
+	rpc CreatePoints (CreatePointsRequest) returns (CreatePointsReply);
+	rpc UpdatePoints (UpdatePointsRequest) returns (UpdatePointsReply);
+	rpc DeletePoints (DeletePointsRequest) returns (DeletePointsReply);
+	rpc GetPoints (GetPointsRequest) returns (GetPointsReply);
+	rpc ListPoints (ListPointsRequest) returns (ListPointsReply);
+}
+
+message CreatePointsRequest {}
+message CreatePointsReply {}
+
+message UpdatePointsRequest {}
+message UpdatePointsReply {}
+
+message DeletePointsRequest {}
+message DeletePointsReply {}
+
+message GetPointsRequest {}
+message GetPointsReply {}
+
+message ListPointsRequest {}
+message ListPointsReply {}

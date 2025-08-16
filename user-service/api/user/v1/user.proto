@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package api.user.v1;
+
+option go_package = "user-service/api/user/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.user.v1";
+
+import "google/protobuf/timestamp.proto";
+
+service User {
+	rpc GetUserByUID (GetUserByUIDRequest) returns (GetUserByUIDReply);
+	rpc GetProfile (GetProfileRequest) returns (GetProfileReply);
+}
+
+message GetUserByUIDRequest {
+	int64 uid = 1;
+}
+
+message GetUserByUIDReply {
+	int64     id       = 1;
+	int64     uid      = 2;
+	google.protobuf.Timestamp create_at = 3;
+	google.protobuf.Timestamp update_at = 4;
+	string    username = 5;
+}
+
+message GetProfileRequest {
+	int64 uid = 1;
+}
+message GetProfileReply {
+	int64     id       = 1;
+	int64     uid      = 2;
+	string    username = 3;
+	string    phone 	= 4;
+	int32     gender 	= 5;
+	int64     points 	= 6;
+	google.protobuf.Timestamp create_at = 7;
+	google.protobuf.Timestamp update_at = 8;
+	google.protobuf.Timestamp birthday = 9;
+}

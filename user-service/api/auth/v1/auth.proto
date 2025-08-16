@@ -18,6 +18,7 @@ service Auth {
 		};
 	}
 	rpc Signup(SignupRequest) returns (SignupResponse){}
+	
 }
 
 message LoginRequest {
